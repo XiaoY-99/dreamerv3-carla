@@ -1,20 +1,16 @@
-import runpod
 import subprocess
 
 def handler(event):
-    steps = event.get("input", {}).get("steps", 10)
-    batch_size = event.get("input", {}).get("batch_size", 4)
-
-    # Run your training script with arguments
-    cmd = [
-        "python", "train_carla.py",
-        f"--steps={steps}",
-        f"--batch_size={batch_size}"
-    ]
+    """
+    RunPod calls this function with an `event` dict.
+    You return a dict with the results.
+    """
+    # Example: start training with your existing training script
     try:
-        subprocess.run(cmd, check=True)
-        return {"status": "success", "steps": steps, "batch_size": batch_size}
+        subprocess.run(
+            ["python", "train_carla.py"],  # <-- replace with your entry script
+            check=True
+        )
+        return {"status": "success", "message": "Training finished"}
     except subprocess.CalledProcessError as e:
         return {"status": "error", "message": str(e)}
-
-runpod.serverless.start({"handler": handler})
