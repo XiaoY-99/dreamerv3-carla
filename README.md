@@ -1,4 +1,5 @@
 # Workflow
+<pre> ```
 +---------------------+                  +----------------------+
 |      CARLA Sim      |                  |    DreamerV3 Agent   |
 |---------------------|                  |----------------------|
@@ -17,6 +18,8 @@
                            |
                            v
                   (Latent imagination rollouts)
+
+``` </pre>
 
 # Install all necessary packages
 1. pip install -r requirements.txt
