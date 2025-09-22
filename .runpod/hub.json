@@ -1,0 +1,41 @@
+{
+    "title": "Dreamerv3 Carla",
+    "description": "Dreamerv3 reinforcement learning agent trained in the Carla simulator.",
+    "type": "serverless",
+    "category": "image",
+    "iconUrl": "https://avatars.githubusercontent.com/u/7713610?s=200&v=4",
+    "config": {
+      "runsOn": "GPU",
+      "containerDiskInGb": 50,
+      "presets": [
+        {
+          "name": "Default Training",
+          "defaults": {
+            "TRAIN_STEPS": "1000000",
+            "BATCH_SIZE": "16"
+          }
+        }
+      ],
+      "env": [
+        {
+          "key": "TRAIN_STEPS",
+          "input": {
+            "name": "Training Steps",
+            "type": "string",
+            "description": "Number of training steps to run",
+            "default": "1000000"
+          }
+        },
+        {
+          "key": "BATCH_SIZE",
+          "input": {
+            "name": "Batch Size",
+            "type": "string",
+            "description": "Training batch size",
+            "default": "16"
+          }
+        }
+      ]
+    }
+  }
+  
