@@ -22,17 +22,7 @@
 ``` </pre>
 
 # Install all necessary packages
-1. pip install -r requirements.txt
-2. pick one based on your cuda version
-    - pip install jax==0.4.29 \
-        jaxlib==0.4.29+cuda12.cudnn91 \
-        -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html 
-
-    - pip install jax==0.4.25 \
-        jaxlib==0.4.25+cuda11.cudnn86 \
-        -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-
-    - Reminder: cuda 11-ver is more stable even if you are using cuda 12.x in current virtual environment, since jax will not work perfectly with the version later than cuda 12.9 and jax for cuda 11.x will ignore the system's cuda and use its own cuda 11.x.
+pip install -r requirements.txt
 
 # Test phase
 1. Start Carla in sync mode (under carla/ root dir):
