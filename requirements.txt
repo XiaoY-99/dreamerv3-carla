@@ -1,0 +1,37 @@
+# --- Core ---
+numpy<2  # DMLab: <2, MineRLv1.0: <1.24
+gymnasium>=0.28
+torch>=2.0
+einops
+dm-tree
+optax
+tensorflow-probability>=0.20
+tensorflow-cpu; sys_platform != "linux"  # safe fallback
+tensorflow; sys_platform == "linux"
+ale_py==0.9.0
+autorom[accept-rom-license]==0.6.1
+av
+chex
+colored_traceback
+elements>=3.19.1
+google-resumable-media>=2.7.2
+granular>=0.20.3
+ipdb
+jaxtyping
+ninjax>=3.5.1
+nvidia-cuda-nvcc-cu12<=12.2
+portal>=3.5.0
+scope>=0.4.4
+
+# --- Environment wrappers ---
+imageio
+opencv-python
+pygame
+
+# --- CARLA client (0.9.14/0.9.15 wheel must match your server) ---
+carla==0.9.14
+
+# --- Logging / utils ---
+tqdm
+tensorboard
+wandb

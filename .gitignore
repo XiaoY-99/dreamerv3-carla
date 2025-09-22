@@ -1,0 +1,25 @@
+# VS Code settings
+.vscode/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+.Python
+dreamerv3/__pycache__/
+
+# Virtual environments
+.venv/
+dreamer/
+
+# Logs & checkpoints
+logs_carla/
+ckpt/
+*.log
+*.jsonl
+*.tfevents.*
+*.out
+
