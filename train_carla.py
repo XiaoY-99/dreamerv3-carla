@@ -220,7 +220,6 @@ def main():
     obs_space, act_space = env.obs_space, env.act_space
     agent_cfg = load_agent_cfg(args, profile="loconav")
     agent = DreamerAgent(obs_space, act_space, agent_cfg)
-
     # Replay buffer
     replay = make_replay(args)
 
@@ -283,15 +282,21 @@ def main():
         episode_len += 1
 
         # === Training updates ===
+        if not hasattr(agent, "last_train_mets"):
+            agent.last_train_mets = {}
+
+        train_mets = {}
         for _ in range(int(args.train_ratio)):
             if len(replay) > args.batch_size * args.batch_length:
                 carry_train, outs, mets = agent.train(
                     carry_train, next(make_stream(replay, "train", args))
                 )
-                # Always log the latest loss
-                if "loss" in mets:
-                    agent.last_loss = float(mets["loss"])  # store for later
-                    logger.scalar("train/loss", agent.last_loss)
+                for k, v in mets.items():
+                    if "loss" in k and isinstance(v, (int, float, np.number)):
+                        train_mets[k] = float(v)
+
+        if train_mets:
+            agent.last_train_mets = train_mets
 
         # Curriculum shaping
         curriculum_callback(env.base_env, counter)
@@ -310,12 +315,30 @@ def main():
                 # logger.scalar("env/speed_raw", float(v[0]))
                 logger.scalar("env/lat_err_raw", float(v[1]))
                 logger.scalar("env/head_err_raw", float(v[2]))
-                logger.scalar("env/progress_raw", float(v[3]))
-                logger.scalar("env/damage_raw", float(v[4]))
-                logger.scalar("env/on_track_raw", float(v[5]))
+                logger.scalar("env/yaw_err_raw", float(v[3]))
+                logger.scalar("env/progress_raw", float(v[4]))
+                logger.scalar("env/damage_raw", float(v[5]))
+                logger.scalar("env/on_track_raw", float(v[6]))
+                logger.scalar("env/wp_x", float(v[7]))
+                logger.scalar("env/wp_y", float(v[8]))
 
             if "progress_m" in obs_for_log:
                 logger.scalar("env/progress_m", float(obs_for_log["progress_m"]))
+
+            '''
+            if hasattr(env.base_env, "_vec_norm"):
+                rn = env.base_env._vec_norm
+                if rn.mean is not None:
+                    for i, name in enumerate(
+                        ["speed", "lat_err", "head_err", "yaw_err",
+                        "progress", "damage", "on_track", "wp_x", "wp_y"]
+                    ):
+                        logger.scalar(f"norm_mean/{name}", float(rn.mean[i]))
+                        logger.scalar(f"norm_var/{name}", float(rn.var[i]))
+            '''
+
+            for k, v in agent.last_train_mets.items():
+                logger.scalar(f"train/{k}", v)
 
             logger.write()  # flush once per logging block
 

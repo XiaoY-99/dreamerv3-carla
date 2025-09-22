@@ -30,7 +30,7 @@ class CarlaRacingDreamerEnv(gym.Env):
 
         # Observations: image (64x64x3) + vector of 6 scalars
         self.image_shape = (img_size, img_size, 3)
-        self.vec_dim = 6  # speed, lat_err, head_err, progress, damage, on_track(0/1)
+        self.vec_dim = 9  # speed, lat_err, head_err, yaw_err, progress, damage, on_track(0/1), wp_x, wp_y
         self.observation_space = spaces.Dict({
             "image": spaces.Box(0, 255, shape=self.image_shape, dtype=np.uint8),
             "vector": spaces.Box(-np.inf, np.inf, shape=(self.vec_dim,), dtype=np.float32),
@@ -49,6 +49,10 @@ class CarlaRacingDreamerEnv(gym.Env):
         # Track collisions
         self._collision_hist = []
         self._last_collision = None 
+
+        # Errors for bonus
+        self._last_lat_err = None
+        self._last_yaw_err = None
 
         # create TB log dir
         # self.writer = SummaryWriter(log_dir="logs_carla/tb_env")  
@@ -78,6 +82,10 @@ class CarlaRacingDreamerEnv(gym.Env):
 
         # Warmup counter to trigger the vehicle at start
         self._warmup_steps = 20  
+
+        # reset error memories
+        self._last_lat_err = None
+        self._last_yaw_err = None
 
         return obs, {}
 
@@ -231,30 +239,37 @@ class CarlaRacingDreamerEnv(gym.Env):
         # --- Raw values ---
         speed = self._vehicle_speed_mps()
         lat_err, head_err = self._track_errors()
+        yaw_err = self._yaw_error()
         progress = self._route_progress()
         damage = self._damage_norm()
         on_track = 1.0 if self._on_track() else 0.0
+
+        # new waypoint vector
+        wp_vec = self._next_waypoint_vector()
 
         raw_vec = np.array([
             speed,
             lat_err,
             head_err,
+            yaw_err,
             progress,
             damage,
             on_track,
+            wp_vec[0],   
+            wp_vec[1],   
         ], dtype=np.float32)
 
         # --- Normalization ---
-        self._vec_norm.update(raw_vec[None])  # update running stats
+        self._vec_norm.update(raw_vec[None])
         norm_vec = self._vec_norm.normalize(raw_vec)
 
-        # --- Return both ---
         return {
             "image": rgb,
-            "vector": norm_vec,       # feed to Dreamer
-            "vector_raw": raw_vec,    # for logging/debugging
-            "progress_m": self.progress_m,  # absolute progress in meters
+            "vector": norm_vec,
+            "vector_raw": raw_vec,
+            "progress_m": self.progress_m,
         }
+
 
     def _compute_reward_and_continue(self):
         # --- Raw signals ---
@@ -262,10 +277,12 @@ class CarlaRacingDreamerEnv(gym.Env):
         speed = self._vehicle_speed_mps()
         ds_centerline = self._progress_delta()
         lat_err, head_err = self._track_errors()
+        yaw_err = self._yaw_error()
 
         lane_w = float(self.route[self.route_idx].lane_width) * 0.5 + 1e-6
-        lat_n = abs(lat_err) / lane_w     # normalized lateral error
-        head_n = abs(head_err) / np.pi    # normalized heading error
+        lat_n = abs(lat_err) / lane_w   
+        head_n = abs(head_err) / np.pi   
+        yaw_n = abs(yaw_err) / np.pi 
 
         # --- Continuous curriculum (0→1 as steps increase) ---
         alpha = min(1.0, steps / 100_000.0)
@@ -274,6 +291,7 @@ class CarlaRacingDreamerEnv(gym.Env):
         w_speed    = 0.05 + 0.45 * alpha
         w_lat      = 2.0 - 1.0 * alpha
         w_head     = 1.0 - 0.5 * alpha
+        w_yaw = 0.5 - 0.2 * alpha 
 
         col_penalty   = -0.2 - 1.8 * alpha
         track_penalty = -0.2 - 0.8 * alpha
@@ -289,6 +307,7 @@ class CarlaRacingDreamerEnv(gym.Env):
         reward += w_speed * np.tanh(speed / 10.0) * lane_factor
         reward -= w_lat * (lat_n ** 2)
         reward -= w_head * (head_n ** 2)
+        reward -= w_yaw * (yaw_n ** 2)
 
         # --- Anti-camping shaping ---
         if speed < 0.5:
@@ -300,10 +319,14 @@ class CarlaRacingDreamerEnv(gym.Env):
         reward += 0.05 * (1.0 - min(lat_n, 1.0))
 
         # --- Recovery bonus (reward if error decreases) ---
-        if hasattr(self, "_last_lat_err"):
-            if abs(lat_err) < abs(self._last_lat_err):
-                reward += 0.1
+        if self._last_lat_err is not None and abs(lat_err) < abs(self._last_lat_err):
+            reward += 0.1
         self._last_lat_err = lat_err
+
+        # Bonus for yaw error improving
+        if self._last_yaw_err is not None and abs(yaw_err) < abs(self._last_yaw_err):
+            reward += 0.05
+        self._last_yaw_err = yaw_err
 
         # --- Explicit off-lane penalty ---
         if lat_n > 1.0:  # more than one lane width off
@@ -327,49 +350,6 @@ class CarlaRacingDreamerEnv(gym.Env):
                 continue_flag = False
 
         return reward, continue_flag
-
-
-        # Nonlinear shaping so even small forward motion is rewarded
-        progress_term = np.tanh(ds_centerline * 20)
-        lane_factor   = np.exp(-2.0 * lat_n)   # smoothly decays off-lane reward
-
-        reward += w_progress * progress_term * lane_factor
-        reward += w_speed * np.tanh(speed / 10.0) * lane_factor
-        reward -= w_lat * (lat_n ** 2)
-        reward -= w_head * (head_n ** 2)
-
-        # --- Anti-camping shaping ---
-        if speed < 0.5:   # discourage standing still
-            reward -= 0.1
-        if ds_centerline == 0:   # no forward progress
-            reward -= 0.2
-
-        # --- Recovery bonus (reward if improving error vs. last step) ---
-        if hasattr(self, "_last_lat_err"):
-            if abs(lat_err) < abs(self._last_lat_err):
-                reward += 0.1
-        self._last_lat_err = lat_err
-
-        # --- Collisions & off-track penalties ---
-        if self._collision_happened():
-            reward += col_penalty * (1.0 + self._damage_norm())
-        if not self._on_track():
-            reward += track_penalty * min(lat_n, 2.0)
-
-        # --- Termination logic (soft, with chance to recover) ---
-        continue_flag = True
-        if self._collision_hard() or self._finished_lap():
-            continue_flag = False
-        elif self._stuck_too_long():
-            continue_flag = False
-        elif abs(lat_err) > 2.5 * lane_w:
-            # Strong penalty but allow recovery unless it's really bad
-            reward -= 5.0
-            if abs(lat_err) > 3.5 * lane_w:
-                continue_flag = False
-
-        return reward, continue_flag
-
 
     # ------- Track geometry & errors -------
 
@@ -401,6 +381,41 @@ class CarlaRacingDreamerEnv(gym.Env):
         seg_yaw = float(np.arctan2(t_hat[1], t_hat[0]))
         head_err = float(np.arctan2(np.sin(yaw - seg_yaw), np.cos(yaw - seg_yaw)))
         return lat_err, head_err
+    
+    # ------- Next waypoints -------
+    def _next_waypoint_vector(self, horizon=1):
+        """Return the relative (dx, dy) vector from ego to the next waypoint,
+        rotated into ego frame and normalized."""
+        ego_tf = self.ego.get_transform()
+        ego_loc = ego_tf.location
+        ego_yaw = np.deg2rad(ego_tf.rotation.yaw)
+
+        # pick waypoint ahead
+        nxt = self.route[(self.route_idx + horizon) % len(self.route)]
+        dx = nxt.transform.location.x - ego_loc.x
+        dy = nxt.transform.location.y - ego_loc.y
+
+        # rotate into ego frame
+        rel_x = dx * np.cos(-ego_yaw) - dy * np.sin(-ego_yaw)
+        rel_y = dx * np.sin(-ego_yaw) + dy * np.cos(-ego_yaw)
+
+        # normalize by a distance scale (say 50m)
+        scale = 50.0
+        return np.array([rel_x / scale, rel_y / scale], np.float32)
+    
+    # ------- Yaw Error -------
+    def _yaw_error(self, horizon=1):
+        ego_tf = self.ego.get_transform()
+        ego_yaw = np.deg2rad(ego_tf.rotation.yaw)
+
+        nxt = self.route[(self.route_idx + horizon) % len(self.route)]
+        dx = nxt.transform.location.x - ego_tf.location.x
+        dy = nxt.transform.location.y - ego_tf.location.y
+        target_yaw = np.arctan2(dy, dx)
+
+        yaw_err = np.arctan2(np.sin(target_yaw - ego_yaw),
+                            np.cos(target_yaw - ego_yaw))
+        return np.float32(yaw_err)
 
     def _route_length_m(self):
         if not hasattr(self, "_route_len"):
