@@ -36,10 +36,5 @@ tqdm
 tensorboard
 wandb
 
-# -- JAX (for GPU, match jaxlib cuda version to your system) ---
-jax==0.4.29
-jaxlib==0.4.29+cuda12.cudnn91
--f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-
 # --- Runpod ---
 runpod
