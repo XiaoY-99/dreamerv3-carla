@@ -5,9 +5,6 @@ torch>=2.0
 einops
 dm-tree
 optax
-tensorflow-probability>=0.20
-tensorflow-cpu; sys_platform != "linux"  # safe fallback
-tensorflow; sys_platform == "linux"
 ale_py==0.9.0
 autorom[accept-rom-license]==0.6.1
 av

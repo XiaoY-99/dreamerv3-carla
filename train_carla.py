@@ -33,8 +33,8 @@ def curriculum_callback(env, counter):
         env._penalty_scale = 2.0
 
 def make_env(index=0, port=2000, counter=None):
-    # client = carla.Client("localhost", port) # Train on local machine
-    client = carla.Client("100.79.76.114", port)  # Train on Runpod
+    client = carla.Client("localhost", port) # Train on the same machine
+    # client = carla.Client("100.79.76.114", port)  # Train on Runpod with locally running CARLA
     client.set_timeout(5.0)
     world = client.get_world()
     s = world.get_settings()
